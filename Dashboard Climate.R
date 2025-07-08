@@ -14,9 +14,10 @@ library(sf)
 library(leaflet)
 library(car)
 library(lmtest)
+library(here)
 
-data_dashboard <-  read_excel("C:/BERKAS STIS/TINGKAT 2/2KS3/SEMESTER 4/KOMSTAT/PROJEK KOMSTAT/datakomstat.xlsx")
-peta_indonesia <- st_read("C:/BERKAS STIS/TINGKAT 2/2KS3/SEMESTER 4/KOMSTAT/PROJEK KOMSTAT/38 Provinsi Indonesia - Provinsi.json")
+data_dashboard <- read_excel(here("datakomstat.xlsx"))
+peta_indonesia <- st_read(here("38 Provinsi Indonesia - Provinsi.json"))
 
 variabel_iklim <- c("Suhu Rata-Rata" = "suhu_rata2",
                     "Curah Hujan" = "curah_hujan",
@@ -59,11 +60,15 @@ ui <- dashboardPage(
         icon = icon("chart-line"),
         menuSubItem(
           "Menurut Provinsi",
-          tabName = "dashboard-provinsi",
+          tabName = "dashboard-provinsi"
         ),
         menuSubItem(
           "Menurut Bencana Alam",
           tabName = "dashboard-bencana"
+        ),
+        menuSubItem(
+          "Sebaran Bencana Tahunan",
+          tabName = "dashboard-tahunan",
         )
       ),
       menuItem(
@@ -80,7 +85,8 @@ ui <- dashboardPage(
           tabName = "analisis-regresi",
           icon = icon("chart-line")
         )
-      ),
+      ), # <--- TAMBAHKAN KOMA DI SINI
+      
       menuItem(
         "Tabel Dinamis",
         tabName = "statistik",
@@ -94,6 +100,7 @@ ui <- dashboardPage(
           tabName = "stat-bencana"
         )
       ),
+      
       menuItem(
         "Profile",
         tabName = "profile",
@@ -313,9 +320,61 @@ ui <- dashboardPage(
       ),
       
       fluidRow(
-        column(
+        box(
+          # Gunakan textOutput untuk judul yang dinamis
+          title = paste("Peta Sebaran Korban Jiwa Bencana"),
+          status = "success",
+          solidHeader = TRUE,
           width = 12,
-          uiOutput("peta_distribusi_box")
+          # Tempatkan leafletOutput langsung di sini
+          leafletOutput("peta_distribusi", height = "500px")
+        )
+      )
+    ),
+    
+    # --- Analisis Sebaran Bencana Tahunan ---
+    # --- Sebaran Bencana Tahunan ---
+    tabItem(
+      tabName = "dashboard-tahunan",
+      fluidRow(
+        # Box untuk Barchart
+        box(
+          title = "Analisis Sebaran Kejadian Bencana",
+          status = "primary",
+          solidHeader = TRUE,
+          width = 12,
+          fluidRow(
+            column(
+              width = 6,
+              selectInput(
+                inputId = "tahun_sebaran",
+                label = "Pilih Tahun:",
+                choices = sort(unique(data_dashboard$tahun), decreasing = TRUE)
+              )
+            ),
+            column(
+              width = 6,
+              selectInput(
+                inputId = "bencana_sebaran",
+                label = "Pilih Jenis Bencana:",
+                choices = c("Banjir", "Cuaca ekstrem", "Gelombang pasang / Abrasi", 
+                            "Kebakaran hutan dan lahan", "Kekeringan", "Longsor")
+              )
+            )
+          ),
+          hr(),
+          plotlyOutput("plot_sebaran_bencana", height = "600px")
+        )
+      ),
+      # --- TAMBAHAN: Box untuk Scatter Plot ---
+      fluidRow(
+        box(
+          title = "Scatter Plot Sebaran Kejadian per Provinsi",
+          status = "info",
+          solidHeader = TRUE,
+          width = 12,
+          # Output untuk scatter plot baru
+          plotlyOutput("plot_sebaran_scatterplot", height = "500px")
         )
       )
     ),
@@ -1033,39 +1092,30 @@ server <- function(input, output,session){
   })
   
   ## Peta dengan Leaflet
-  output$peta_distribusi_box<- renderUI({
-    box(
-      title = paste("Peta Distribusi", input$bencana_terpilih),
-      status = "success",
-      solidHeader = TRUE,
-      width = 12,
-      leafletOutput("peta_distribusi", height = "400px")
-    )
-  })
-  
   output$peta_distribusi <- renderLeaflet({
-    data_leaflet <-  bencana_filter() %>% 
-      group_by(provinsi) %>% 
-      summarise(total_bencana = sum(bencana_spesifik, na.rm = TRUE)) %>% 
+    data_leaflet <- bencana_filter() %>%
+      group_by(provinsi) %>%
+      summarise(total_bencana = sum(bencana_spesifik, na.rm = TRUE)) %>%
       filter(total_bencana > 0)
     
-    peta_indonesia <-  left_join(peta_indonesia,data_leaflet, by = c("PROVINSI" = "provinsi"))
-    
+    # BENAR: Simpan hasil join ke variabel LOKAL, bukan global
+    peta_data_joined <- left_join(peta_indonesia, data_leaflet, by = c("PROVINSI" = "provinsi"))
     
     pal <- colorNumeric(
       palette = "YlOrRd",
-      domain = peta_indonesia$total_bencana
+      domain = peta_data_joined$total_bencana
     )
     
     labels <- sprintf(
       "<strong>%s</strong><br/>%d kejadian",
-      peta_indonesia$PROVINSI,
-      peta_indonesia$total_bencana
+      peta_data_joined$PROVINSI,
+      peta_data_joined$total_bencana
     ) %>% lapply(htmltools::HTML)
     
-    leaflet(data = peta_indonesia) %>% 
-      addTiles() %>% 
-      setView(lng = 118, lat = -2, zoom = 5) %>% 
+    # Gunakan variabel lokal 'peta_data_joined' untuk membuat peta
+    leaflet(data = peta_data_joined) %>%
+      addTiles() %>%
+      setView(lng = 118, lat = -2, zoom = 5) %>%
       addPolygons(
         fillColor = ~pal(total_bencana),
         weight = 1,
@@ -1074,31 +1124,20 @@ server <- function(input, output,session){
         dashArray = "3",
         fillOpacity = 0.7,
         highlightOptions = highlightOptions(
-          weight = 3,
-          color = "#666",
-          dashArray = "",
-          fillOpacity = 0.7,
-          bringToFront = TRUE
+          weight = 3, color = "#666", dashArray = "", fillOpacity = 0.7, bringToFront = TRUE
         ),
         label = labels,
         labelOptions = labelOptions(
           style = list("font-weight" = "normal", padding = "3px 8px"),
-          textsize = "15px",
-          direction = "auto"
+          textsize = "15px", direction = "auto"
         )
-      ) %>% 
+      ) %>%
       addLegend(
-        pal = pal,
-        values = ~total_bencana,
-        opacity = 0.7,
-        title = paste("Jumlah Kejadian",input$bencana_terpilih),
+        pal = pal, values = ~total_bencana, opacity = 0.7,
+        title = paste("Jumlah Kejadian", input$bencana_terpilih),
         position = "bottomright"
       )
   })
-  
-  # Output Analisis
-  
-  ## Korelasi
   
   output$scatterplot <- renderPlot({
     req(input$vars_korelasi)
@@ -1146,6 +1185,107 @@ server <- function(input, output,session){
         )
       }
     }
+  })
+  
+  # OUTPUT BARCHART SEBARAN BENCANA
+  
+  # Data reaktif untuk analisis sebaran
+  data_sebaran <- reactive({
+    # Pastikan input sudah tersedia sebelum melanjutkan
+    req(input$tahun_sebaran, input$bencana_sebaran)
+    
+    data_dashboard %>%
+      # 1. Filter data berdasarkan tahun yang dipilih
+      filter(tahun == input$tahun_sebaran) %>%
+      # 2. Pilih kolom provinsi dan kolom bencana yang dipilih
+      select(provinsi, !!sym(input$bencana_sebaran)) %>%
+      # 3. Ganti nama kolom bencana menjadi nama generik "Jumlah"
+      rename(Jumlah = !!sym(input$bencana_sebaran)) %>%
+      # 4. Filter provinsi yang jumlah bencananya lebih dari 0
+      filter(Jumlah > 0) %>%
+      # 5. Urutkan dari jumlah terbesar ke terkecil
+      arrange(desc(Jumlah)) %>%
+      # 6. Ambil 15 provinsi teratas agar chart tidak terlalu ramai
+      slice_head(n = 15)
+  })
+  
+  # Render plot sebaran bencana
+  output$plot_sebaran_bencana <- renderPlotly({
+    
+    plot_data <- data_sebaran()
+    
+    # Memberi pesan jika tidak ada data untuk ditampilkan
+    validate(
+      need(nrow(plot_data) > 0, paste("Tidak ada kejadian", input$bencana_sebaran, "tercatat pada tahun", input$tahun_sebaran, "."))
+    )
+    
+    plot_ly(
+      data = plot_data,
+      # Sumbu y adalah provinsi, diurutkan berdasarkan jumlah
+      y = ~reorder(provinsi, Jumlah), 
+      # Sumbu x adalah jumlah kejadian
+      x = ~Jumlah, 
+      type = 'bar',
+      orientation = 'h', # 'h' untuk horizontal bar chart
+      marker = list(color = '#17a2b8'),
+      hovertemplate = '<b>%{y}</b><br>Jumlah Kejadian: %{x}<extra></extra>'
+    ) %>%
+      layout(
+        title = paste("Top 15 Provinsi dengan Kejadian", input$bencana_sebaran, "Terbanyak Tahun", input$tahun_sebaran),
+        xaxis = list(title = "Jumlah Kejadian"),
+        yaxis = list(title = "Provinsi"),
+        margin = list(l = 150) # Menambah margin kiri agar nama provinsi tidak terpotong
+      )
+    
+  })
+  
+  # OUTPUT UNTUK SCATTER PLOT DI TAB SEBARAN BENCANA
+  
+  output$plot_sebaran_scatterplot <- renderPlotly({
+    # Pastikan input sudah tersedia
+    req(input$tahun_sebaran, input$bencana_sebaran)
+    
+    # 1. Ambil urutan provinsi resmi dari data peta
+    urutan_provinsi <- peta_indonesia$PROVINSI
+    
+    # 2. Siapkan data kejadian bencana untuk tahun yang dipilih
+    data_kejadian <- data_dashboard %>%
+      filter(tahun == input$tahun_sebaran) %>%
+      select(provinsi, Jumlah = !!sym(input$bencana_sebaran))
+    
+    # 3. Buat data frame lengkap dengan semua provinsi untuk memastikan urutan yang benar
+    #    dan provinsi dengan 0 kejadian tetap muncul.
+    data_plot <- data.frame(provinsi = urutan_provinsi) %>%
+      left_join(data_kejadian, by = "provinsi") %>%
+      # Ganti NA (provinsi tanpa data) menjadi 0
+      mutate(Jumlah = ifelse(is.na(Jumlah), 0, Jumlah))
+    
+    # 4. Paksa urutan sumbu X dengan mengubah provinsi menjadi factor
+    data_plot$provinsi <- factor(data_plot$provinsi, levels = urutan_provinsi)
+    
+    # 5. Buat scatter plot
+    plot_ly(
+      data = data_plot,
+      x = ~provinsi,
+      y = ~Jumlah,
+      type = 'scatter',
+      mode = 'markers',
+      marker = list(color = '#fd7e14', size = 8),
+      hovertemplate = paste(
+        '<b>%{x}</b><br>',
+        'Jumlah Kejadian: %{y}<extra></extra>'
+      )
+    ) %>%
+      layout(
+        title = paste("Sebaran Kejadian", input$bencana_sebaran, "Tahun", input$tahun_sebaran),
+        yaxis = list(title = "Jumlah Kejadian"),
+        xaxis = list(
+          title = "Provinsi",
+          # Putar label agar tidak tumpang tindih
+          tickangle = -45
+        ),
+        margin = list(b = 120) # Menambah margin bawah untuk label yang diputar
+      )
   })
   
   
@@ -1402,12 +1542,13 @@ server <- function(input, output,session){
   
   output$download_data_provinsi <- downloadHandler(
     filename = function() {
-      paste0("data-statistik-", Sys.Date(), ".csv")
+      paste0("data-statistik-", input$provinsi_terpilih_stat, "-", Sys.Date(), ".csv")
     },
     content = function(file) {
       data_lengkap <- provinsi_filter_stat()
       
-      data_untuk_diunduh <- data_lengkap[input$tabel_stat_wilayah_rows_all, ]
+      # BENAR: Gunakan ID tabel yang sesuai -> tabel_stat_provinsi_rows_all
+      data_untuk_diunduh <- data_lengkap[input$tabel_stat_provinsi_rows_all, ]
       
       write.csv(data_untuk_diunduh, file, row.names = FALSE)
     }
