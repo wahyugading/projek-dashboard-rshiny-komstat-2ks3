@@ -1,0 +1,154 @@
+---
+title: "Laporan Analisis Iklim dan Bencana"
+author: "Dashboard Analisis Iklim - Kelompok 6"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  word_document: 
+    toc: true
+    number_sections: true
+params:
+  provinsi: "Indonesia"
+  tahun_awal: 2020
+  tahun_akhir: 2024
+  data: NULL
+---
+
+
+```{r setup, include=FALSE}
+# Opsi global untuk membuat laporan bersih
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center')
+
+# Memuat semua library yang dibutuhkan
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(stringr)
+library(tidyr)
+```
+
+# 1. Ringkasan Statistik Utama
+## Tabel berikut menampilkan metrik-metrik utama yang dihitung dari data yang telah difilter, mereplikasi nilai yang ditampilkan pada Info Box di dashboard.
+
+```{r}
+# Mengakses data yang dikirim dari Shiny
+data_laporan <- params$data
+
+# Menghitung metrik ringkasan dari data
+total_kejadian_bencana <- sum(data_laporan$Total_Kejadian, na.rm = TRUE)
+total_korban_jiwa <- sum(data_laporan$Total_Korban, na.rm = TRUE)
+suhu_rata_rata <- mean(data_laporan$suhu_rata2, na.rm = TRUE)
+
+# Membuat tabel ringkasan
+tabel_ringkasan <- data.frame(
+  Indikator = c("Total Kejadian Bencana", "Total Korban Jiwa", "Rata-rata Suhu Tahunan"),
+  Nilai = c(
+    format(total_kejadian_bencana, big.mark = ","),
+    format(total_korban_jiwa, big.mark = ","),
+    paste(round(suhu_rata_rata, 2), "°C")
+  )
+)
+
+# Menampilkan tabel dengan format yang rapi
+kable(tabel_ringkasan, caption = "Tabel 1: Ringkasan Statistik Utama.")
+```
+
+# 2. Visualisasi Tren Tahunan
+## Grafik di bawah ini menggambarkan tren jumlah kejadian bencana dan jumlah korban jiwa dari tahun ke tahun.
+
+```{r}
+# Menyiapkan data untuk plot tren
+data_plot_tren <- data_laporan %>%
+  group_by(tahun) %>%
+  summarise(
+    `Total Kejadian` = sum(Total_Kejadian, na.rm = TRUE),
+    `Total Korban` = sum(Total_Korban, na.rm = TRUE)
+  ) %>%
+  pivot_longer(
+    cols = c(`Total Kejadian`, `Total Korban`),
+    names_to = "Kategori",
+    values_to = "Jumlah"
+  )
+
+# Membuat plot tren dengan ggplot2
+ggplot(data_plot_tren, aes(x = tahun, y = Jumlah, color = Kategori, group = Kategori)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  labs(
+    title = paste("Tren Tahunan di", params$provinsi),
+    subtitle = "Perbandingan Jumlah Kejadian Bencana dan Korban Jiwa",
+    x = "Tahun",
+    y = "Jumlah",
+    color = "Legenda"
+  ) +
+  scale_color_manual(values = c("Total Kejadian" = "#FF851B", "Total Korban" = "#C93C3C")) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+```
+
+# 3. Analisis Proporsi Bencana
+## Diagram berikut menunjukkan proporsi setiap jenis bencana berdasarkan jumlah kejadian dan jumlah korban jiwa yang diakibatkannya.
+
+
+```{r}
+# Menyiapkan data untuk pie chart kejadian
+data_pie_kejadian <- data_laporan %>%
+  select(Banjir, `Cuaca ekstrem`, `Gelombang pasang / Abrasi`, `Kebakaran hutan dan lahan`, Kekeringan, Longsor) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "Jenis_Bencana", values_to = "Total_Kejadian") %>%
+  filter(Total_Kejadian > 0)
+
+# Menyiapkan data untuk pie chart korban
+data_pie_korban <- data_laporan %>%
+  select(korban_Banjir:korban_Longsor) %>%
+  summarise(across(everything(), sum, na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "Jenis_Bencana", values_to = "Jumlah_Korban") %>%
+  mutate(
+    Jenis_Bencana = str_replace(Jenis_Bencana, "^korban_", ""),
+    Jenis_Bencana = str_replace_all(Jenis_Bencana, "_", " ")
+  ) %>%
+  filter(Jumlah_Korban > 0)
+
+
+# Membuat plot kejadian (kiri)
+plot1 <- ggplot(data_pie_kejadian, aes(x = "", y = Total_Kejadian, fill = Jenis_Bencana)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_void(base_size = 12) +
+  labs(title = "Proporsi Jumlah Kejadian") +
+  geom_text(aes(label = scales::percent(Total_Kejadian/sum(Total_Kejadian))), 
+            position = position_stack(vjust = 0.5), color="white", size=4) +
+  theme(legend.position = "bottom")
+
+# Membuat plot korban (kanan)
+plot2 <- ggplot(data_pie_korban, aes(x = "", y = Jumlah_Korban, fill = Jenis_Bencana)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_void(base_size = 12) +
+  labs(title = "Proporsi Korban Jiwa") +
+  geom_text(aes(label = scales::percent(Jumlah_Korban/sum(Jumlah_Korban))), 
+            position = position_stack(vjust = 0.5), color="white", size=4) +
+  theme(legend.position = "bottom")
+
+# Menggabungkan dua plot menjadi satu gambar
+gridExtra::grid.arrange(plot1, plot2, ncol = 2)
+```
+
+# 4. Data Rinci
+## Tabel di bawah ini menampilkan 10 baris pertama dari data yang digunakan untuk menghasilkan laporan ini.
+
+```{r}
+# Menampilkan sampel data
+data_tabel_rinci <- params$data %>%
+  select(provinsi, tahun, suhu_rata2, curah_hujan, Total_Kejadian, Total_Korban) %>%
+  rename(
+    Provinsi = provinsi,
+    Tahun = tahun,
+    `Suhu (°C)` = suhu_rata2,
+    `Curah Hujan (mm)` = curah_hujan,
+    `Jml Kejadian` = Total_Kejadian,
+    `Jml Korban` = Total_Korban
+  )
+
+kable(head(data_tabel_rinci, 10), caption = "Tabel 2: Sampel Data Rinci.")
+```
+

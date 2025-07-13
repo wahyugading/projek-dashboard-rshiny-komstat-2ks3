@@ -1,0 +1,124 @@
+---
+title: "Laporan Analisis Bencana Spesifik"
+author: "Dashboard Analisis Iklim - Kelompok 6"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  word_document:
+    toc: true
+    number_sections: true
+params:
+  bencana: "Banjir"
+  tahun_awal: 2020
+  tahun_akhir: 2024
+  data: NULL
+---
+
+```{r setup, include=FALSE}
+# Opsi global untuk membuat laporan bersih
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center')
+
+# Memuat semua library yang dibutuhkan untuk laporan ini
+library(dplyr)
+library(ggplot2)
+```
+
+# 1. Ringkasan Statistik Utama
+## Tabel berikut menampilkan metrik-metrik utama yang dihitung dari data yang telah difilter, mereplikasi nilai yang ditampilkan pada Info Box di dashboard.
+
+```{r}
+# Mengakses data yang dikirim dari Shiny
+data_laporan <- params$data
+
+# Menghitung metrik ringkasan
+total_kejadian_spesifik <- sum(data_laporan$bencana_spesifik, na.rm = TRUE)
+total_korban_spesifik <- sum(data_laporan$korban_spesifik, na.rm = TRUE)
+
+provinsi_terdampak <- data_laporan %>%
+  group_by(provinsi) %>%
+  summarise(total_kejadian = sum(bencana_spesifik, na.rm = TRUE)) %>%
+  arrange(desc(total_kejadian)) %>%
+  slice(1) %>%
+  pull(provinsi)
+
+# Menangani kasus jika tidak ada provinsi terdampak
+if (length(provinsi_terdampak) == 0) {
+  provinsi_terdampak <- "Tidak Ada"
+}
+
+# Membuat tabel ringkasan
+tabel_ringkasan <- data.frame(
+  Indikator = c(paste("Total Kejadian", params$bencana), paste("Total Korban Jiwa Akibat", params$bencana), "Provinsi Paling Terdampak"),
+  Nilai = c(
+    format(total_kejadian_spesifik, big.mark = ","),
+    format(total_korban_spesifik, big.mark = ","),
+    provinsi_terdampak
+  )
+)
+
+# Menampilkan tabel dengan format yang rapi
+kable(tabel_ringkasan, caption = "Tabel 1: Ringkasan Statistik Utama Bencana.", col.names = c("Indikator", "Nilai"))
+```
+
+# 2. Visualisasi Tren Tahunan
+## Grafik di bawah ini menggambarkan tren jumlah kejadian bencana dan jumlah korban jiwa dari tahun ke tahun.
+
+```{r}
+# Menyiapkan data untuk plot tren
+data_plot_tren <- data_laporan %>%
+  group_by(tahun) %>%
+  summarise(
+    `Jumlah Kejadian` = sum(bencana_spesifik, na.rm = TRUE),
+    `Jumlah Korban Jiwa` = sum(korban_spesifik, na.rm = TRUE)
+  )
+
+# Plot Tren Kejadian
+plot_kejadian <- ggplot(data_plot_tren, aes(x = tahun, y = `Jumlah Kejadian`)) +
+  geom_line(color = "#3c8dbc", size = 1.2) +
+  geom_point(color = "#3c8dbc", size = 3) +
+  labs(
+    title = paste("Tren Kejadian", params$bencana, "per Tahun"),
+    x = "Tahun",
+    y = "Jumlah Kejadian"
+  ) +
+  theme_minimal(base_size = 14)
+
+# Plot Tren Korban
+plot_korban <- ggplot(data_plot_tren, aes(x = tahun, y = `Jumlah Korban Jiwa`)) +
+  geom_line(color = "#dd4b39", size = 1.2) +
+  geom_point(color = "#dd4b39", size = 3) +
+  labs(
+    title = paste("Tren Korban Jiwa Akibat", params$bencana, "per Tahun"),
+    x = "Tahun",
+    y = "Jumlah Korban Jiwa"
+  ) +
+  theme_minimal(base_size = 14)
+
+# Menggabungkan dua plot
+gridExtra::grid.arrange(plot_kejadian, plot_korban, ncol = 1)
+```
+
+# 3. Peringkat Provinsi Paling Terdampak
+## Grafik bar berikut menampilkan 10 provinsi dengan jumlah kejadian bencana terbanyak selama periode yang dipilih.
+
+```{r}
+# Menyiapkan data untuk bar chart
+data_plot_top <- data_laporan %>%
+  group_by(provinsi) %>%
+  summarise(total_kejadian = sum(bencana_spesifik, na.rm = TRUE)) %>%
+  filter(total_kejadian > 0) %>%
+  arrange(desc(total_kejadian)) %>%
+  slice_head(n = 10)
+
+# Membuat plot
+ggplot(data_plot_top, aes(x = reorder(provinsi, total_kejadian), y = total_kejadian)) +
+  geom_bar(stat = "identity", fill = "#007BFF") +
+  coord_flip() + # Membuat bar chart horizontal
+  labs(
+    title = paste("Top 10 Provinsi Terdampak", params$bencana),
+    x = "Provinsi",
+    y = paste("Total Kejadian", params$bencana)
+  ) +
+  geom_text(aes(label = total_kejadian), hjust = -0.2, color = "black", size = 4) +
+  theme_minimal(base_size = 14)
+```
+
