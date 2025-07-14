@@ -1,0 +1,88 @@
+---
+title: "Laporan Analisis Korelasi Antar Variabel"
+author: "Dashboard Analisis Iklim - Kelompok 6"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  word_document:
+    toc: true
+    number_sections: true
+params:
+  provinsi: "Indonesia"
+  variabel: NULL
+  data: NULL
+  trans_dep: "none"
+  trans_indep: "none"
+---
+
+```{r setup, include=FALSE}
+# Opsi global untuk membuat laporan bersih
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center')
+
+# Memuat semua library yang dibutuhkan untuk laporan ini
+library(dplyr)
+library(ggplot2)
+library(knitr)
+```
+
+# Analisis Korelasi untuk Wilayah:
+## Laporan ini menyajikan analisis korelasi untuk variabel-variabel yang dipilih. Data yang digunakan dalam laporan ini dihasilkan secara dinamis berdasarkan filter provinsi dan opsi transformasi yang dipilih pada dashboard.
+
+# Visualisasi Hubungan: Scatter-Matrix
+## Grafik scatter-matrix di bawah ini menampilkan hubungan antar setiap pasang variabel yang dipilih. Diagonalnya menunjukkan distribusi kepadatan (densitas) dari masing-masing variabel.
+```{r}
+# Mengakses data yang sudah difilter dan ditransformasi dari Shiny
+data_laporan <- params$data
+
+# Membuat plot ggpairs
+ggpairs(data_laporan)
+```
+
+# Tabel Matriks Korelasi
+## Tabel berikut menunjukkan nilai koefisien korelasi Pearson untuk setiap pasang variabel. Nilai berkisar dari -1 (korelasi negatif sempurna) hingga +1 (korelasi positif sempurna).
+
+```{r}
+# Menghitung matriks korelasi
+cor_mat <- round(cor(data_laporan, use = "pairwise.complete.obs"), 3)
+
+# Menampilkan tabel dengan format yang rapi
+kable(cor_mat, caption = "Tabel 1: Matriks Korelasi Pearson.")
+```
+
+# Interpretasi Hasil Korelasi
+## Berikut adalah interpretasi teks dari setiap hubungan korelasi yang ditampilkan pada matriks di atas.
+
+```{r}
+# Mengakses variabel yang diperlukan
+vars <- params$variabel
+cor_matrix <- cor(data_laporan, use = "pairwise.complete.obs")
+
+# Membuat daftar interpretasi
+interpretasi_list <- list()
+
+if (length(vars) >= 2) {
+  for (i in 1:(length(vars) - 1)) {
+    for (j in (i + 1):length(vars)) {
+      nilai <- cor_matrix[i, j]
+      
+      # Menentukan kekuatan hubungan
+      strength <- ifelse(abs(nilai) < 0.3, "lemah",
+                         ifelse(abs(nilai) < 0.7, "sedang", "kuat"))
+      
+      # Menentukan arah hubungan
+      direction <- ifelse(nilai > 0, "positif", "negatif")
+      
+      # Membuat kalimat interpretasi
+      kalimat <- paste0(
+        "Hubungan antara **", vars[i], "** dan **", vars[j], "** bersifat **", 
+        strength, " ", direction, "** dengan nilai korelasi **", round(nilai, 3), "**."
+      )
+      interpretasi_list <- append(interpretasi_list, kalimat)
+    }
+  }
+}
+
+# Menampilkan interpretasi sebagai daftar bullet point
+cat(paste("*", unlist(interpretasi_list), collapse = "\n"))
+```
+
+

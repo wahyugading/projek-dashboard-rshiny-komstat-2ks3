@@ -641,23 +641,6 @@ ui <- dashboardPage(
                 width = 12,
                 uiOutput("peta_bencana_box")
               )
-            ),
-            # FITUR UNDUH LAPORAN PETA BENCANA
-            fluidRow(
-              box(
-                title = "Unduh Laporan",
-                status = "info",
-                solidHeader = TRUE,
-                width = 12,
-                div(
-                  style = "text-align: center; padding: 20px;",
-                  p("Unduh laporan lengkap analisis peta sebaran bencana dalam format PDF"),
-                  downloadButton("download_laporan_peta_bencana", 
-                                 "Unduh Laporan Peta Bencana", 
-                                 class = "btn-primary btn-lg",
-                                 style = "margin: 10px;")
-                )
-              )
             )
         )
       ),
@@ -710,23 +693,6 @@ ui <- dashboardPage(
               column(
                 width = 12,
                 uiOutput("peta_iklim_box")
-              )
-            ),
-            # FITUR UNDUH LAPORAN PETA IKLIM
-            fluidRow(
-              box(
-                title = "Unduh Laporan",
-                status = "info",
-                solidHeader = TRUE,
-                width = 12,
-                div(
-                  style = "text-align: center; padding: 20px;",
-                  p("Unduh laporan lengkap analisis peta sebaran iklim dalam format PDF"),
-                  downloadButton("download_laporan_peta_iklim", 
-                                 "Unduh Laporan Peta Iklim", 
-                                 class = "btn-primary btn-lg",
-                                 style = "margin: 10px;")
-                )
               )
             )
         )
@@ -2750,17 +2716,27 @@ server <- function(input, output,session){
     })
   })
   
+  # ===================================================================
+  # OUTPUT UNTUK RINGKASAN UJI ASUMSI KESELURUHAN
+  # ===================================================================
   output$overall_check <- renderPrint({
+    # Pastikan model sudah ada
     req(model_fit())
     
-    cat("RINGKASAN PEMERIKSAAN ASUMSI KLASIK MODEL REGRESI\n")
+    # Pastikan semua hasil uji asumsi sudah dihitung
+    req(
+      !is.null(assumption_results$homoskedastisitas),
+      !is.null(assumption_results$normalitas),
+      !is.null(assumption_results$multikolinearitas),
+      !is.null(assumption_results$autokorelasi)
+    )
+    
+    # --- Mulai Logika untuk Membuat Teks Ringkasan ---
+    
+    cat("RINGKASAN HASIL PENGUJIAN ASUMSI KLASIK MODEL REGRESI\n")
     cat("================================================================\n\n")
     
-    # Tunggu sampai semua pengujian selesai
-    req(assumption_results$homoskedastisitas, assumption_results$normalitas, 
-        assumption_results$multikolinearitas, assumption_results$autokorelasi)
-    
-    # Hitung jumlah asumsi yang terpenuhi
+    # Ambil hasil dari reactiveValues
     assumptions <- c(
       "Homoskedastisitas" = assumption_results$homoskedastisitas,
       "Normalitas Residual" = assumption_results$normalitas,
@@ -2768,20 +2744,21 @@ server <- function(input, output,session){
       "Non-autokorelasi" = assumption_results$autokorelasi
     )
     
-    passed <- sum(assumptions, na.rm = TRUE)
-    total <- length(assumptions)
-    
-    cat("STATUS ASUMSI:\n")
+    # Buat status teks
     for(i in 1:length(assumptions)) {
       status <- if(assumptions[i]) "✓ TERPENUHI" else "✗ TIDAK TERPENUHI"
-      cat(sprintf("  %d. %-20s: %s\n", i, names(assumptions)[i], status))
+      cat(sprintf("  %-25s: %s\n", names(assumptions)[i], status))
     }
     
     cat("\n================================================================\n")
-    cat("KESIMPULAN UMUM:\n")
-    cat(sprintf("Model memenuhi %d dari %d asumsi klasik (%.1f%%)\n\n", 
-                passed, total, (passed/total)*100))
     
+    # Hitung total
+    passed <- sum(assumptions, na.rm = TRUE)
+    total <- length(assumptions)
+    
+    cat(sprintf("KESIMPULAN: Model memenuhi %d dari %d asumsi klasik (%.0f%%).\n\n", 
+                passed, total, (passed/total)*100))
+  
     if(passed == total) {
       cat("🎉 EXCELLENT! Model regresi memenuhi SEMUA asumsi klasik.\n")
       cat("   Penaksir yang dihasilkan bersifat BLUE (Best Linear Unbiased Estimator).\n")
@@ -3215,58 +3192,12 @@ server <- function(input, output,session){
     }
   )
   
-  # Download Handler untuk Peta Bencana
-  output$download_laporan_peta_bencana <- downloadHandler(
-    filename = function() {
-      variabel_nama <- names(Jenis_Bencana)[Jenis_Bencana == input$peta_bencana_terpilih]
-      paste("Laporan_Peta_Bencana_", gsub(" ", "_", variabel_nama), "_", input$tahun_peta_bencana, "_", Sys.Date(), ".pdf", sep = "")
-    },
-    content = function(file) {
-      tempReport <- file.path(tempdir(), "laporan_peta_bencana.Rmd")
-      file.copy("templates/laporan_peta_bencana_template.Rmd", tempReport, overwrite = TRUE)
-      
-      params <- list(
-        Jenis_Bencana = input$peta_bencana_terpilih,
-        variabel_nama = names(Jenis_Bencana)[Jenis_Bencana == input$peta_bencana_terpilih],
-        tahun = input$tahun_peta_bencana,
-        data = peta_bencana_filter()
-      )
-      
-      rmarkdown::render(tempReport, 
-                        output_file = file,
-                        params = params,
-                        envir = new.env(parent = globalenv()))
-    }
-  )
   
-  # Download Handler untuk Peta Iklim
-  output$download_laporan_peta_iklim <- downloadHandler(
-    filename = function() {
-      variabel_nama <- names(variabel_iklim)[variabel_iklim == input$peta_iklim_terpilih]
-      paste("Laporan_Peta_Iklim_", gsub(" ", "_", variabel_nama), "_", input$tahun_peta_iklim, "_", Sys.Date(), ".pdf", sep = "")
-    },
-    content = function(file) {
-      tempReport <- file.path(tempdir(), "laporan_peta_iklim.Rmd")
-      file.copy("templates/laporan_peta_iklim_template.Rmd", tempReport, overwrite = TRUE)
-      
-      params <- list(
-        variabel_iklim = input$peta_iklim_terpilih,
-        variabel_nama = names(variabel_iklim)[variabel_iklim == input$peta_iklim_terpilih],
-        tahun = input$tahun_peta_iklim,
-        data = peta_iklim_filter()
-      )
-      
-      rmarkdown::render(tempReport, 
-                        output_file = file,
-                        params = params,
-                        envir = new.env(parent = globalenv()))
-    }
-  )
   
   # Download Handler untuk Analisis Korelasi
   output$download_laporan_korelasi <- downloadHandler(
     filename = function() {
-      paste("Laporan_Analisis_Korelasi_", input$prov_korelasi, "_", Sys.Date(), ".pdf", sep = "")
+      paste("Laporan_Analisis_Korelasi_", input$prov_korelasi, "_", Sys.Date(), ".docx", sep = "")
     },
     content = function(file) {
       tempReport <- file.path(tempdir(), "laporan_korelasi.Rmd")
@@ -3300,7 +3231,7 @@ server <- function(input, output,session){
   # Download Handler untuk Analisis Regresi
   output$download_laporan_regresi <- downloadHandler(
     filename = function() {
-      paste("Laporan_Analisis_Regresi_", input$prov_var, "_", Sys.Date(), ".pdf", sep = "")
+      paste("Laporan_Analisis_Regresi_", input$prov_var, "_", Sys.Date(), ".docx", sep = "")
     },
     content = function(file) {
       tempReport <- file.path(tempdir(), "laporan_regresi.Rmd")

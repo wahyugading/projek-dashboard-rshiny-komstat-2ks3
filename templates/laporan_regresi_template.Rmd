@@ -1,0 +1,132 @@
+---
+title: "Laporan Analisis Regresi Linear"
+author: "Dashboard Analisis Iklim - Kelompok 6"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  word_document:
+    toc: true
+    number_sections: true
+params:
+  provinsi: NULL
+  dep_var: NULL
+  indep_vars: NULL
+  trans_dep: NULL
+  trans_indep: NULL
+  model: NULL
+  data: NULL
+  assumptions: NULL
+---
+
+```{r setup, include=FALSE}
+# Opsi global untuk membuat laporan bersih
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center')
+
+# Memuat semua library yang dibutuhkan untuk laporan ini
+library(dplyr)
+library(knitr)
+library(broom) # Untuk merapikan output model
+```
+
+# Analisis Regresi:
+Laporan ini menyajikan hasil analisis regresi linear untuk wilayah r params$provinsi. Analisis ini bertujuan untuk memodelkan hubungan antara variabel dependen dan independen yang telah dipilih.
+
+Spesifikasi Model:
+
+Variabel Dependen (Y): r params$dep_var
+
+Variabel Independen (X): r paste(params$indep_vars, collapse = ", ")
+
+Transformasi Y: r params$trans_dep
+
+Transformasi X: r params$trans_indep
+
+# Ringkasan Model Regresi
+## Tabel berikut menampilkan ringkasan statistik dari model regresi yang dihasilkan, termasuk koefisien, standar error, nilai-t, dan p-value.
+
+```{r}
+# Mengakses model yang sudah di-fit dari Shiny
+model <- params$model
+
+# Tampilkan ringkasan model jika valid
+if (inherits(model, "lm")) {
+  # Gunakan broom::tidy untuk merapikan output summary
+  summary_df <- broom::tidy(model)
+  kable(summary_df, caption = "Tabel 1: Ringkasan Koefisien Model Regresi.", digits = 4)
+} else {
+  "Model regresi tidak dapat dibuat. Periksa kembali pilihan variabel atau transformasi Anda."
+}
+
+```
+
+## Interpretasi Koefisien
+
+```{r}
+model <- params$model
+dep_var <- params$dep_var
+indep_vars <- params$indep_vars
+
+if (inherits(model, "lm")) {
+  coef_summary <- summary(model)$coefficients
+  interpretasi_list <- list()
+  
+  for (i in 2:nrow(coef_summary)) {
+    var_name <- indep_vars[i - 1]
+    beta <- coef_summary[i, 1]
+    pval <- coef_summary[i, 4]
+    
+    signif <- if (pval < 0.01) "sangat signifikan" else if (pval < 0.05) "signifikan" else "tidak signifikan"
+    arah <- if (beta > 0) "meningkatkan" else "menurunkan"
+    
+    kalimat <- paste0(
+      "Setiap kenaikan 1 unit pada **", var_name, "** diprediksi akan **", arah, "** nilai **", 
+      dep_var, "** sebesar **", round(abs(beta), 4), "**, dengan asumsi variabel lain konstan. Pengaruh ini bersifat **", signif, "** (p-value = ", round(pval, 4), ")."
+    )
+    interpretasi_list <- append(interpretasi_list, kalimat)
+  }
+  
+  cat(paste("*", unlist(interpretasi_list), collapse = "\n\n"))
+}
+```
+
+# Diagnostik Plot
+## Grafik diagnostik di bawah ini digunakan untuk memeriksa asumsi-asumsi penting dari model regresi linear secara visual.
+
+```{r}
+model <- params$model
+
+if (inherits(model, "lm")) {
+  # Mengatur layout plot menjadi 2x2
+  par(mfrow = c(2, 2))
+  plot(model)
+  # Mengembalikan layout ke default
+  par(mfrow = c(1, 1))
+}
+```
+
+# Ringkasan Pemeriksaan Uji Asumsi Klasik
+## Tabel berikut merangkum hasil pengujian asumsi klasik yang telah dilakukan pada model regresi.
+```{r}
+# Mengakses hasil uji asumsi dari Shiny
+assumptions <- params$assumptions
+
+if (!is.null(assumptions)) {
+  status_homo <- if(assumptions$homoskedastisitas) "✓ TERPENUHI" else "✗ TIDAK TERPENUHI"
+  status_normal <- if(assumptions$normalitas) "✓ TERPENUHI" else "✗ TIDAK TERPENUHI"
+  status_multi <- if(assumptions$multikolinearitas) "✓ TERPENUHI" else "✗ TIDAK TERPENUHI"
+  status_auto <- if(assumptions$autokorelasi) "✓ TERPENUHI" else "✗ TIDAK TERPENUHI"
+  
+  tabel_asumsi <- data.frame(
+    Asumsi = c("Homoskedastisitas", "Normalitas Residual", "Non-multikolinearitas", "Non-autokorelasi"),
+    Status = c(status_homo, status_normal, status_multi, status_auto)
+  )
+  
+  kable(tabel_asumsi, caption = "Tabel 2: Hasil Pemeriksaan Uji Asumsi Klasik.")
+} else {
+  "Hasil uji asumsi tidak tersedia."
+}
+```
+
+
+
+
+
